@@ -1,0 +1,124 @@
+---
+title: "PML course project"
+author: "Matt Heimdahl"
+date: "6/30/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+In this analysis we explore data from the Weight Lifting Exercises Dataset, a collection of data from accelerometers from 6 participants who were asked to perform barbell lifts both correctly and incorrectly in 5 different patterns. This study is from the field of human activity recognition (HAR) research, which aims to quantify how well an activity is performed.
+
+## Exploring the Data
+
+We read in the training and testing data available online. Our outcome variable, "classe", measures the 5 different weightlifting patterns described above. The testing dataset does not include a "classe" variable, but will predict "classe" for the individuals in the testing dataset later in our analysis.
+
+```{r data, echo=FALSE}
+library(dplyr)
+library(caret)
+
+# read in training data
+training <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+
+# read in testing data
+testing <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+
+```
+
+## Data Hygiene
+
+There are several ID and timestamp variables that we will remove from the datasets. We check for missing variables and discover that several variables have a significant portion of NAs (97% in the training and 100% in the testing data) so we will remove these variables from our analysis. We also test variables to see if they only have one or few unique values and eliminate these from our dataset.
+
+```{r cleaning}
+# remove columns
+training <- select(training, -c(1:6))
+testing <- select(testing, -c(1:6))
+
+# check missing values
+table(is.na(training))
+tr <- sapply(training, function(x) sum(is.na(x))/length(x))*100
+
+table(is.na(testing))
+te <- sapply(testing, function(x) sum(is.na(x))/length(x))*100
+
+# remove columns with any NAs
+not_any_na <- function(x) all(!is.na(x))
+training2 <- training %>% select_if(not_any_na)
+dim(training2)
+
+# remove zero covariates
+nzv <- nearZeroVar(training2,saveMetrics=TRUE)
+
+nzv <- nearZeroVar(training2)
+training2 <- training2[, -nzv]
+dim(training2)
+```
+
+## Model Fitting
+
+Next, we fit our model. For this analysis we use a Gradient Boosting Model (GBM) using the caret package.
+We will use cross-validation in the model to obtain a estimate of the accuracy with the test set.
+
+```{r gbm}
+# parallel processing
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) 
+registerDoParallel(cluster)
+
+# configure trainControl
+trainControl <- trainControl(method="cv", number=5, allowParallel=TRUE, savePredictions = T)
+
+# seperate out outcome variable and predictors for the model
+x <- training2[,-54]
+y <- training2[,54]
+
+# boosting model
+set.seed(831)
+gbmFit <- caret::train(x, y, method="gbm", trControl=trainControl, verbose=FALSE)
+print(gbmFit)
+
+# stop parallel processing
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+## Model Results
+
+The confusion matrix indicates that the model accurately predicts over 98% of the training cases. The resample results show that the accuracy is at the same relative level in all 5 of the partitions used in cross validation.
+
+
+```{r results}
+# confusion matrix
+gbmFit
+gbmFit$resample
+confusionMatrix.train(gbmFit)
+
+# look at tuning results and final model
+gbmFit$bestTune
+plot(gbmFit)
+gbmFit$results
+gbmFit$finalModel
+
+# look at performance per partition and resample
+gbmFit$resample
+
+```
+
+## Prediction
+
+Finally, we make predictions for "classe" using our GBM model on the 20 cases in the testing dataset. 
+
+```{r predictions}
+# make predictions on test set
+gbmPred <- predict.train(gbmFit,testing)
+gbmPred
+
+```
+
+
