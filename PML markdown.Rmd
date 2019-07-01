@@ -2,7 +2,9 @@
 title: "PML course project"
 author: "Matt Heimdahl"
 date: "6/30/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: yes
 ---
 
 ```{r setup, include=FALSE}
